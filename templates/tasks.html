@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>My Tasks</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+
+  <header class="app-header">
+    <h1>✓ TaskApp</h1>
+    <button class="btn btn-ghost" id="logout-btn">Logout</button>
+  </header>
+
+  <main class="app-main">
+    <div class="add-task-box">
+      <input type="text" id="new-task" placeholder="What needs to be done?">
+      <select id="priority">
+        <option value="low">Low</option>
+        <option value="medium" selected>Medium</option>
+        <option value="high">High</option>
+      </select>
+      <button class="btn btn-primary" id="add-btn">Add</button>
+    </div>
+
+    <ul id="task-list" class="task-list"></ul>
+  </main>
+
+  <script>
+    async function loadTasks() {
+      const response = await fetch("/tasks")
+
+      if (response.status === 401) {
+        window.location.href = "/login"
+        return
+      }
+
+      const tasks = await response.json()
+      const list = document.getElementById("task-list")
+      list.innerHTML = ""
+
+      if (tasks.length === 0) {
+        list.innerHTML = "<li class='empty-msg'>No tasks yet — add one above!</li>"
+        return
+      }
+
+      tasks.forEach(task => list.appendChild(createTaskEl(task)))
+    }
+
+    function createTaskEl(task) {
+      const li = document.createElement("li")
+      li.className = `task-item priority-${task.priority}`
+
+      li.innerHTML = `
+        <input type="checkbox" ${task.done ? "checked" : ""}>
+        <span class="task-title ${task.done ? "done" : ""}">${task.title}</span>
+        <span class="priority-badge badge-${task.priority}">${task.priority}</span>
+        <button class="btn btn-danger">Delete</button>
+      `
+
+      li.querySelector("input[type=checkbox]").addEventListener("change", (e) => {
+        markDone(task.id, e.target.checked)
+      })
+
+      li.querySelector(".btn-danger").addEventListener("click", () => {
+        deleteTask(task.id)
+      })
+
+      return li
+    }
+
+    document.getElementById("add-btn").addEventListener("click", async () => {
+      const title = document.getElementById("new-task").value.trim()
+      const priority = document.getElementById("priority").value
+      if (!title) return
+
+      await fetch("/tasks", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ title, priority })
+      })
+
+      document.getElementById("new-task").value = ""
+      loadTasks()
+    })
+
+    async function markDone(id, isDone) {
+      await fetch(`/tasks/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ done: isDone })
+      })
+      loadTasks()
+    }
+
+    async function deleteTask(id) {
+      await fetch(`/tasks/${id}`, { method: "DELETE" })
+      loadTasks()
+    }
+
+    document.getElementById("logout-btn").addEventListener("click", async () => {
+      await fetch("/logout", { method: "POST" })
+      window.location.href = "/login"
+    })
+
+    loadTasks()
+  </script>
+</body>
+</html>
