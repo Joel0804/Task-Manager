@@ -44,3 +44,8 @@ python app.py
 http://localhost:5000
 
 The database file tasks.db is created automatically on first run.
+
+## Future changes 
+
+connect to Postgresql
+Real-time updates
