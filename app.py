@@ -1,6 +1,8 @@
 import sqlite3
 from flask import Flask, request, jsonify, session
 import hashlib
+from flask import render_template, redirect
+
 DB_PATH = "database.db" # this is file name
 
 # function allows you talk to database
@@ -34,6 +36,17 @@ def init_db():
 app = Flask(__name__) # tells flask to start  web application
 app.secret_key = 'devkey'
 
+@app.route("/")
+def index():
+    return redirect("/login")
+
+
+@app.route("/register")
+def register_page():
+    return render_template("register.html")
+
+
+
 @app.route("/register", methods=["POST"]) # post to submit
 def register(): 
     data = request.get_json()# gets data in json format it converts into dictionary
@@ -51,11 +64,15 @@ def register():
         (username, pw_hash)
         )
         conn.commit()
-        jsonify({"message": "Account created!"})
+        return jsonify({"message": "Account created!"})
     except sqlite3.IntegrityError:
         return jsonify({"error": "Username already taken"}), 409
     finally:
         conn.close()
+        
+@app.route("/login")
+def login_page():
+    return render_template("login.html")
         
 @app.route("/login", methods=["POST"])
 def login():
@@ -87,14 +104,88 @@ def login():
 def logout():
     session.clear()
     return jsonify({"message": "Logged out"})
-  
-   
-@app.route('/me', methods=["GET"])
-def me():
+
+# @app.route('/me', methods=["GET"])
+# def me():
+#     if "user_id" not in session:
+#         return jsonify({"error": "Not logged in"}), 401
+#     return jsonify({"username": session["username"]})
+
+@app.route("/tasks-page")
+def tasks_page():
+    return render_template("tasks.html")
+
+
+@app.route("/tasks", methods=["GET"]) # shows the data
+def get_task():
+    if "user_id" not in session: # checks session matches user or not
+        return jsonify({"error: Not logged in"}), 404
+    
+    conn = get_db()# opens connections to database 
+    try:
+        tasks = conn.execute(
+            "SELECT * FROM tasks WHERE user_id = ? ORDER BY created_at DESC", # give me tasks by user id newest first
+        (session["user_id"],)).fetchall() # session user id stores the number logged in fetchall return rows
+    finally:
+        conn.close()
+    
+    return jsonify([dict(t) for t in tasks]) # fetchcall give sqlite3 after looping it become "id: 1"
+    
+@app.route("/tasks", methods=["POST"])
+def create_task():
+    if "user_id" not in session:
+        return jsonify({"error: Not logged in"}), 401
+    
+    data = request.get_json()
+    title = data["title"]
+    priority = data.get("priority", "medium")
+    
+    conn = get_db() 
+    try:
+        conn.execute(
+            "INSERT INTO tasks (user_id, title, priority) VALUES (?,?,?)",
+            (session["user_id"], title, priority) 
+        )
+        conn.commit()
+    finally:
+        conn.close()
+    
+    return jsonify({"message": "Task created !"})
+        
+@app.route("/tasks/<int:task_id>", methods=["PATCH"])
+def update_task(task_id):
     if "user_id" not in session:
         return jsonify({"error": "Not logged in"}), 401
-    return jsonify({"username": session["username"]})
-    
+
+    data = request.get_json()
+    done = 1 if data.get("done") else 0  # ← read from request
+
+    conn = get_db()
+    try:
+        conn.execute(
+            "UPDATE tasks SET done = ? WHERE id = ? AND user_id = ?",
+            (done, task_id, session["user_id"])
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+    return jsonify({"message": "Task updated!"})
+
+@app.route("/tasks/<int:task_id>", methods=["DELETE"])
+def delete_task(task_id):
+    if "user_id" not in session:
+        return jsonify({"error: Not logged in"}), 401
+    conn = get_db()
+    try:
+        conn.execute(
+            "DELETE FROM tasks WHERE id = ? AND user_id = ?",
+            (task_id, session["user_id"])
+        )
+        conn.commit()
+    finally:
+        conn.close()
+    return jsonify({"message": "Task deleted"})
 
 if __name__ == "__main__":
     init_db()
